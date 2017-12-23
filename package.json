@@ -1,0 +1,33 @@
+{
+  "name": "mocha-gold-http",
+  "version": "1.0.0",
+  "description": "Gold HTTP requests and cache them for offline testing",
+  "main": "src/golder.js",
+  "scripts": {
+    "test": "mocha test",
+    "lint": "eslint . --fix"
+  },
+  "keywords": [
+    "mocha",
+    "gold",
+    "http",
+    "testing",
+    "mock"
+  ],
+  "author": "Artem Titoulenko <artem.titoulenko@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "4.11.0",
+    "eslint-config-airbnb-base": "12.1.0",
+    "eslint-plugin-import": "2.8.0",
+    "eslint-plugin-mocha": "^4.11.0",
+    "mocha": "4.0.1",
+    "sinon": "4.1.3"
+  },
+  "dependencies": {
+    "bluebird": "3.5.1",
+    "lodash": "4.17.4",
+    "request": "2.83.0",
+    "request-promise": "4.2.2"
+  }
+}
