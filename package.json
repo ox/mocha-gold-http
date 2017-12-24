@@ -2,6 +2,10 @@
   "name": "mocha-gold-http",
   "version": "0.5.0",
   "description": "Gold HTTP requests and cache them for offline testing",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ox/mocha-gold-http.git"
+  },
   "main": "src/golder.js",
   "scripts": {
     "test": "mocha test",
