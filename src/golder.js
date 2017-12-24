@@ -65,8 +65,12 @@ class Golder {
     });
   }
 
+  /**
+   * Gold all routes for this gold test suite passed during creation.
+   * @returns {Promise<Array[void]>}
+   */
   gold() {
-    return Promise.mapSeries(Object.entries(this.routes), ([route, opts]) => {
+    return Promise.map(Object.entries(this.routes), ([route, opts]) => {
       assert(opts.url, `url missing for route ${route} in Golder ${this.name}`);
       const filePath = path.join(this.folderPath, `${route}.html`);
       const exists = fs.existsSync(filePath);
@@ -75,7 +79,7 @@ class Golder {
       if (!exists) {
         shouldReGold = true;
       } else if (exists && opts.refresh) {
-        const { mtime } = fs.lstatSync(filePath);
+        const mtime = fs.lstatSync(filePath);
         const now = new Date();
         const age = now - mtime;
 
@@ -91,57 +95,57 @@ class Golder {
   goldRoute(route, opts) {
     assert(opts.url, `url missing for route ${route} in Golder ${this.name}`);
 
+    // TODO(artem): gold when the route is requested, to be able to use all request opts
     return request.get({
       uri: opts.url,
       resolveWithFullResponse: true,
-    })
-      .then((response) => {
-        const filePath = path.join(this.folderPath, `${route}.html`);
-        const exists = fs.existsSync(filePath);
-        const code = response.statusCode;
+    }).then((response) => {
+      const filePath = path.join(this.folderPath, `${route}.html`);
+      const code = response.statusCode;
+      const exists = fs.existsSync(filePath);
 
-        // if the response code is not OK and the current file exists, warn that the re-golding
-        // cannot be completed
-        if (code >= 400 && exists) {
-          const current = fs.readFileSync(filePath);
-          if (current.statusCode !== code) {
-            const msg = `re-golding ${opts.url} returned code ${code}, using expired response`;
-            // eslint-disable-next-line no-console
-            console.warn(msg);
-            return Promise.resolve();
-          }
-        } else if (code >= 400) {
-          throw new Error(`GET ${opts.url} returned code ${code}; cannot gold`);
+      // if the response code is not OK and the current file exists, warn that the re-golding
+      // cannot be completed
+      if (code >= 400 && exists) {
+        const current = fs.readFileSync(filePath);
+
+        if (current.statusCode !== code) {
+          const msg = `re-golding ${opts.url} returned code ${code}, using expired response`;
+          // eslint-disable-next-line no-console
+          console.warn(msg);
+          return Promise.resolve();
         }
+      } else if (code >= 400) {
+        throw new Error(`GET ${opts.url} returned code ${code}; cannot gold`);
+      }
 
-        // QUESTION(artem): is there a need to gold 4XX responses?
-        return fs.writeFileSync(filePath, JSON.stringify(response, null, 2));
+      // QUESTION(artem): is there a need to gold 4XX responses?
+      const body = JSON.stringify(response, null, 2);
+      return new Promise((resolve, reject) => {
+        fs.writeFile(filePath, body, (err) => {
+          return err ? reject(err) : resolve();
+        });
       });
+    });
   }
 
   mockRequest(sandbox, req) {
     sandbox.stub(req, 'get').callsFake((pathOrOpts) => {
-      let uri = pathOrOpts;
-      let fullResponse = false;
+      let opts = { uri: pathOrOpts };
+
       if (_.isObject(pathOrOpts)) {
         assert(pathOrOpts.uri);
-        // eslint-disable-next-line prefer-destructuring
-        uri = pathOrOpts.uri;
-        if (pathOrOpts.resolveWithFullResponse) {
-          fullResponse = true;
-        }
+        opts = Object.assign({}, pathOrOpts, { resolveWithFullResponse: true });
       }
-      const filePath = this.urlToFile[uri];
+
+      const filePath = this.urlToFile[opts.uri];
       if (!fs.existsSync(filePath)) {
-        throw new Error(`Golder ${this.name} doesn't gold ${uri}`);
+        // QUESTION(artem): what if this.goldRoute() is called here, and all requests are golded?
+        throw new Error(`Golder ${this.name} doesn't gold ${opts.uri}`);
       }
 
       const response = JSON.parse(fs.readFileSync(filePath));
-      if (fullResponse) {
-        return response;
-      }
-
-      return response.body;
+      return Promise.resolve(response);
     });
   }
 }

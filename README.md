@@ -17,40 +17,45 @@ When calling `mocha-gold-http`'s mocked request, it follows the following checks
 
 ```js
 const Golder = require('mocha-gold-http');
+const assert = require('assert');
 const sinon = require('sinon');
 const request = require('request-promise');
-
+ 
 // sandbox is optional; can use `sinon` itself since the methods called are the same
 const sandbox = sinon.createSandbox(sinon.defaultConfig);
-
+ 
 describe('some test', function () {
+  // NOTE: require to make sure Linux has enough time to flush to disk
+  this.timeout(30000);
+
   const opts = {
     name: 'some test',
     routes: {
       homepage: {
-        url: 'https://www.google.com',
+        url: 'https://www.npmjs.com',
         refresh: 'weekly',
       },
     },
   };
   const golder = new Golder(opts);
-
+ 
   beforeEach(() => {
-    return golder.gold()
-      .then(() => golder.mockRequest(sandbox, request));
+    return golder.gold();
   });
-
+ 
   afterEach(() => {
     sandbox.restore();
   });
-
+ 
   it('can fetch remote pages', function () {
+    golder.mockRequest(sandbox, request);
     return request.get(opts.routes.homepage.url)
-      .then((response) => {
+    .then((response) => {
         // test the response as if you made a network call
+	      assert.equal(response.statusCode, 200);
       });
   });
-})
+});
 
 ```
 

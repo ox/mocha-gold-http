@@ -151,7 +151,9 @@ describe('Golder', () => {
           golder.mockRequest(sandbox, request);
 
           // requesting the url should return the contents of the golded response
-          return request.get(golder.routes.homepage.url);
+          const ret = request.get(golder.routes.homepage.url);
+          assert(ret.then);
+          return ret;
         })
         .then((response) => {
           sinon.assert.calledOnce(fs.readFileSync);
