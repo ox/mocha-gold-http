@@ -68,8 +68,8 @@ golding tool, but I'm sure there are plenty of other features and edge cases to
 be considered. I would like some answers to the following questions:
 
 - the library currently has a preference for request-promise, should it be more generic?
-- there is a strange hang-up, maybe in request-promise, that needs addressing (#1)
-- can the API be streamlined? (#2)
+- there is a strange hang-up, maybe in request-promise, that needs addressing [#1](https://github.com/ox/mocha-gold-http/issues/1)
+- can the API be streamlined? [#2](https://github.com/ox/mocha-gold-http/issues/2)
 - is the name too specific or misleading?
 
 ## Contributing
