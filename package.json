@@ -1,6 +1,6 @@
 {
   "name": "mocha-gold-http",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "Gold HTTP requests and cache them for offline testing",
   "main": "src/golder.js",
   "scripts": {
