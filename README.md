@@ -68,7 +68,8 @@ golding tool, but I'm sure there are plenty of other features and edge cases to
 be considered. I would like some answers to the following questions:
 
 - the library currently has a preference for request-promise, should it be more generic?
-- can the API be streamlined?
+- there is a strange hang-up, maybe in request-promise, that needs addressing (#1)
+- can the API be streamlined? (#2)
 - is the name too specific or misleading?
 
 ## Contributing
