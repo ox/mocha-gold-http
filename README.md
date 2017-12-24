@@ -3,6 +3,14 @@
 This plugin enables golding of responses with configurable refresh times to enable offline testing
 of remote resources. The golds will be written to disk and are meant to be kept in your source tree.
 
+When calling `mocha-gold-http`'s mocked request, it follows the following checks:
+
+- check if there is a response file recorded for the given url
+- if the file exists and is fresh enough, return that response
+- if the file exists and needs to be refreshed, fetch the given url and write the response to disk
+  - if the upstream status code differs from the one on disk, warn and return the response on disk
+- if the requested route is not requested to be golded, throw an error
+
 ## Usage
 
 `mocha-gold-http`'s [tests](glob/master/test) demonstrate how to use the plugin.
@@ -45,3 +53,21 @@ describe('some test', function () {
 })
 
 ```
+
+## Roadmap and Development
+
+Currently this library covers the bare minimum for what I would like in a
+golding tool, but I'm sure there are plenty of other features and edge cases to
+be considered. I would like some answers to the following questions:
+
+- the library currently has a preference for request-promise, should it be more generic?
+- can the API be streamlined?
+- is the name too specific or misleading?
+
+## Contributing
+
+PRs and Issues are gladly accepted! Please create an Issue first before submitting
+a PR so there may be a place to discuss what the solution should look like.
+
+When submitting code, make sure it passes tests (`npm run test`) and linting
+checks (`npm run lint`).
