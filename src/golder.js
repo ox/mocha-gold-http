@@ -110,6 +110,8 @@ class Golder {
             console.warn(msg);
             return Promise.resolve();
           }
+        } else if (code >= 400) {
+          throw new Error(`GET ${opts.url} returned code ${code}; cannot gold`);
         }
 
         // QUESTION(artem): is there a need to gold 4XX responses?
