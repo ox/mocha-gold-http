@@ -3,4 +3,7 @@ module.exports = {
     "node": true,
   },
   "extends": "airbnb-base",
+  "rules": {
+    "arrow-body-style": 0,
+  },
 };
