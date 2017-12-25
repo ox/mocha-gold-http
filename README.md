@@ -1,6 +1,7 @@
-# Mocha Gold HTTP
-
 [![npm](https://img.shields.io/npm/v/mocha-gold-http.svg?style=flat-square)](https://www.npmjs.com/package/mocha-gold-http)
+[![Build Status](https://travis-ci.org/ox/mocha-gold-http.svg?branch=master)](https://travis-ci.org/ox/mocha-gold-http)
+
+# Mocha Gold HTTP
 
 This plugin enables golding of responses with configurable refresh times to enable offline testing
 of remote resources. The golds will be written to disk and are meant to be kept in your source tree.
