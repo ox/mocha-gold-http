@@ -20,8 +20,9 @@ class FakeFS {
 
   writeFileSync(path, content) {
     const now = new Date();
-    const stat = { atime: now, mtime: now, birthtime: now };
-    this.fs[path] = { content, stat };
+    const existingBirthtime = this.fs[path] && this.fs[path].birthtime;
+    const stat = {atime: now, mtime: now, birthtime: existingBirthtime || now};
+    this.fs[path] = {content, stat};
   }
 
   lstatSync(path) {

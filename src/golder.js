@@ -1,5 +1,6 @@
 const Promise = require('bluebird');
-const request = require('request-promise');
+const axios = require('axios');
+
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -22,11 +23,11 @@ function sanitize(name) {
 }
 
 class Golder {
-  constructor({ name, routes = {} } = {}) {
+  constructor({name, routes = {}} = {}) {
     assert(name, 'Golder requires a `name`');
     if (routes) {
       Object.entries(routes).forEach(([route, opts]) => {
-        const { refresh } = opts;
+        const {refresh} = opts;
         if (refresh && !differences[refresh]) {
           const list = Object.keys(differences).join(', ');
           const msg = `Golder ${name}'s ${route} refresh rate '${refresh}' is not one of ${list}`;
@@ -37,7 +38,8 @@ class Golder {
 
     this.name = name;
     this.routes = routes;
-    this.urlToFile = {};
+    this.axios = axios.create({});
+    this.urlToRoute = {};
     const goldsDir = path.join(process.cwd(), 'test', 'golds');
 
     this.folderName = sanitize(name);
@@ -61,92 +63,72 @@ class Golder {
     Object.entries(routes).forEach(([route, opts]) => {
       assert(opts.url, `Golder ${name}'s ${route} is missing a url param`);
       const fileName = sanitize(route);
-      this.urlToFile[opts.url] = path.join(this.folderPath, `${fileName}.html`);
+      this.urlToRoute[opts.url] = {
+        filePath: path.join(this.folderPath, `${fileName}.html`),
+        opts,
+      };
     });
   }
 
-  /**
-   * Gold all routes for this gold test suite passed during creation.
-   * @returns {Promise<Array[void]>}
-   */
-  gold() {
-    return Promise.map(Object.entries(this.routes), ([route, opts]) => {
-      assert(opts.url, `url missing for route ${route} in Golder ${this.name}`);
-      const filePath = path.join(this.folderPath, `${route}.html`);
-      const exists = fs.existsSync(filePath);
-      let shouldReGold = false;
-
-      if (!exists) {
-        shouldReGold = true;
-      } else if (exists && opts.refresh) {
-        const mtime = fs.lstatSync(filePath);
-        const now = new Date();
-        const age = now - mtime;
-
-        if (age > differences[opts.refresh]) {
-          shouldReGold = true;
-        }
-      }
-
-      return shouldReGold ? this.goldRoute(route, opts) : Promise.resolve();
-    });
+  readGold(filePath) {
+    return fs.readFileSync(filePath);
   }
 
-  goldRoute(route, opts) {
-    assert(opts.url, `url missing for route ${route} in Golder ${this.name}`);
-
-    // TODO(artem): gold when the route is requested, to be able to use all request opts
-    return request.get({
-      uri: opts.url,
-      resolveWithFullResponse: true,
-    }).then((response) => {
-      const filePath = path.join(this.folderPath, `${route}.html`);
-      const code = response.statusCode;
-      const exists = fs.existsSync(filePath);
-
-      // if the response code is not OK and the current file exists, warn that the re-golding
-      // cannot be completed
-      if (code >= 400 && exists) {
-        const current = fs.readFileSync(filePath);
-
-        if (current.statusCode !== code) {
-          const msg = `re-golding ${opts.url} returned code ${code}, using expired response`;
-          // eslint-disable-next-line no-console
-          console.warn(msg);
-          return Promise.resolve();
-        }
-      } else if (code >= 400) {
-        throw new Error(`GET ${opts.url} returned code ${code}; cannot gold`);
-      }
-
-      // QUESTION(artem): is there a need to gold 4XX responses?
-      const body = JSON.stringify(response, null, 2);
-      return new Promise((resolve, reject) => {
-        fs.writeFile(filePath, body, (err) => {
-          return err ? reject(err) : resolve();
-        });
-      });
-    });
+  writeGold(filePath, body) {
+    fs.writeFileSync(filePath, body);
   }
 
   mockRequest(sandbox, req) {
-    sandbox.stub(req, 'get').callsFake((pathOrOpts) => {
-      let opts = { uri: pathOrOpts };
+    const fn = (pathOrOpts) => {
+      const reqOpts = {method: 'get', url: pathOrOpts};
 
-      if (_.isObject(pathOrOpts)) {
-        assert(pathOrOpts.uri);
-        opts = Object.assign({}, pathOrOpts, { resolveWithFullResponse: true });
+      if (_.isPlainObject(pathOrOpts)) {
+        Object.assign(reqOpts, pathOrOpts, {url: pathOrOpts.url});
       }
 
-      const filePath = this.urlToFile[opts.uri];
-      if (!fs.existsSync(filePath)) {
-        // QUESTION(artem): what if this.goldRoute() is called here, and all requests are golded?
-        throw new Error(`Golder ${this.name} doesn't gold ${opts.uri}`);
+      const {filePath, opts} = this.urlToRoute[reqOpts.url];
+      const goldExists = fs.existsSync(filePath);
+      let useGold = goldExists;
+      if (goldExists && opts.refresh) {
+        const {mtime} = fs.lstatSync(filePath);
+        const age = new Date() - mtime;
+        useGold = age < differences[opts.refresh];
+      }
+      if (useGold) {
+        const response = JSON.parse(this.readGold(filePath));
+        return Promise.resolve(response);
       }
 
-      const response = JSON.parse(fs.readFileSync(filePath));
-      return Promise.resolve(response);
-    });
+      return this.axios(opts)
+        .then((response) => {
+          const {status} = response;
+          delete response.request;
+
+          // if the response code is not OK and the current file exists, warn that the re-golding
+          // cannot be completed
+          if (status >= 400 && goldExists) {
+            const current = this.readGold(filePath);
+
+            if (current.status !== status) {
+              const msg = `re-golding ${reqOpts.url} returned code ${status}; using expired response`;
+              console.warn('WARN:', msg); // eslint-disable-line no-console
+              return Promise.resolve();
+            }
+          } else if (status >= 400) {
+            throw new Error(`GET ${reqOpts.url} returned code ${status}; cannot gold`);
+          }
+
+          // QUESTION(artem): is there a need to gold 4XX responses?
+          const body = JSON.stringify(response, null, 2);
+          this.writeGold(filePath, body);
+          return Promise.resolve();
+        });
+    };
+
+    if (_.isFunction(req.get.restore)) {
+      req.get.restore();
+    }
+    sandbox.stub(req, 'get').callsFake(fn);
   }
 }
 

@@ -55,7 +55,7 @@ describe('some test', function () {
     return request.get(opts.routes.homepage.url)
     .then((response) => {
         // test the response as if you made a network call
-	      assert.equal(response.statusCode, 200);
+	      assert.equal(response.status, 200);
       });
   });
 });
