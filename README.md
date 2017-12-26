@@ -22,15 +22,12 @@ When calling `mocha-gold-http`'s mocked request, it follows the following checks
 const Golder = require('mocha-gold-http');
 const assert = require('assert');
 const sinon = require('sinon');
-const request = require('request-promise');
- 
+const axios = require('axios');
+
 // sandbox is optional; can use `sinon` itself since the methods called are the same
 const sandbox = sinon.createSandbox(sinon.defaultConfig);
- 
-describe('some test', function () {
-  // NOTE: require to make sure Linux has enough time to flush to disk
-  this.timeout(30000);
 
+describe('some test', function () {
   const opts = {
     name: 'some test',
     routes: {
@@ -41,25 +38,20 @@ describe('some test', function () {
     },
   };
   const golder = new Golder(opts);
- 
-  beforeEach(() => {
-    return golder.gold();
-  });
- 
-  afterEach(() => {
-    sandbox.restore();
-  });
- 
+
+  // NOTE: require to make sure Linux has enough time to flush to disk
+  this.timeout(30000);
+  beforeEach(() => golder.mockRequest(sandbox, axios));
+  afterEach(() => sandbox.restore());
+
   it('can fetch remote pages', function () {
-    golder.mockRequest(sandbox, request);
-    return request.get(opts.routes.homepage.url)
-    .then((response) => {
+    return axios.get(opts.routes.homepage.url)
+      .then((response) => {
         // test the response as if you made a network call
 	      assert.equal(response.statusCode, 200);
       });
   });
 });
-
 ```
 
 ## Roadmap and Development
@@ -68,9 +60,9 @@ Currently this library covers the bare minimum for what I would like in a
 golding tool, but I'm sure there are plenty of other features and edge cases to
 be considered. I would like some answers to the following questions:
 
-- the library currently has a preference for request-promise, should it be more generic?
-- there is a strange hang-up, maybe in request-promise, that needs addressing [#1](https://github.com/ox/mocha-gold-http/issues/1)
-- can the API be streamlined? [#2](https://github.com/ox/mocha-gold-http/issues/2)
+- the library currently has a preference for a particular request lib, should it be more generic?
+- there is a strange hang-up that needs addressing ([#1](https://github.com/ox/mocha-gold-http/issues/1))
+- can the API be streamlined? (~~[#2](https://github.com/ox/mocha-gold-http/issues/2)~~)
 - is the name too specific or misleading?
 
 ## Contributing

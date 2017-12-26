@@ -1,41 +1,37 @@
 const sinon = require('sinon');
 const assert = require('assert');
-const request = require('request-promise');
+const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const fakeFs = require('./util-fake-fs');
 const Golder = require('../src/golder');
 
-describe('Golder', () => {
+describe('Golder', function () {
   const sandbox = sinon.createSandbox(sinon.defaultConfig);
-  const expectedResponse = {
-    statusCode: 200,
-    body: 'test-body',
+  const homepageUrl = 'http://duckduckgo.com/robots.txt';
+  const mockResponse = {
+    status: 200,
+    data: 'test-body',
     headers: {},
-    request: {},
   };
-  const expectedResponseString = JSON.stringify(expectedResponse, null, 2);
+  const opts = {
+    name: 'homepage tests',
+    routes: {
+      homepage: {
+        url: homepageUrl,
+        refresh: 'weekly',
+      },
+    },
+  };
   let golder;
-  let homepagePath;
 
   beforeEach(() => {
     fakeFs.init(sandbox, fs);
-    sandbox.stub(request, 'get').resolves(expectedResponse);
-  });
-
-  beforeEach(() => {
-    const opts = {
-      name: 'homepage tests',
-      routes: {
-        homepage: {
-          url: 'https://www.google.com/',
-          refresh: 'weekly',
-        },
-      },
-    };
-
     golder = new Golder(opts);
-    homepagePath = path.join(golder.folderPath, 'homepage.html');
+    // stub the lib's axios instant to make sure it never actually makes requests
+    sandbox.stub(golder.axios, 'get').resolves(mockResponse);
+    sandbox.spy(golder, 'readGold');
+    sandbox.spy(golder, 'writeGold');
   });
 
   afterEach(() => {
@@ -50,18 +46,21 @@ describe('Golder', () => {
 
     it('can detect a bad refresh rate', () => {
       assert.throws(
-        () => new Golder({ name: 'foo', routes: { foo: { refresh: 'not a real rate' } } }),
+        () => new Golder({name: 'foo', routes: {foo: {refresh: 'not a real rate'}}}),
         /refresh rate/,
       );
     });
 
-    it('makes a urlToFile mapping', () => {
-      const expectedFileRoute = path.join(__dirname, 'golds', 'homepage-tests', 'homepage.html');
-      assert.equal(golder.urlToFile[golder.routes.homepage.url], expectedFileRoute);
+    it('makes a urlToRoute mapping', () => {
+      const expectedFileRoute = {
+        filePath: path.join(__dirname, 'golds', 'homepage-tests', 'homepage.html'),
+        opts: opts.routes.homepage,
+      };
+      assert.deepEqual(golder.urlToRoute[homepageUrl], expectedFileRoute);
     });
   });
 
-  describe('golding', () => {
+  describe('gold parent folders', () => {
     it('generates the right gold folder name', () => {
       const expectedFolderName = 'homepage-tests';
       const expectedFolderRoute = path.join(__dirname, 'golds', expectedFolderName);
@@ -72,125 +71,62 @@ describe('Golder', () => {
     it('creates the right gold folders', () => {
       assert(fs.existsSync(golder.folderPath), `${golder.folderPath} was not created`);
     });
-
-    describe('routes', () => {
-      it('golds routes correctly', () => {
-        return golder.gold()
-          .then(() => {
-            assert(fs.existsSync(homepagePath), `${homepagePath} was not created`);
-            assert(fs.readFileSync(homepagePath), expectedResponseString);
-          });
-      });
-
-      it('uses golds if they exist', () => {
-        return golder.gold()
-          .then(() => golder.gold())
-          .then(() => {
-            sinon.assert.calledOnce(request.get);
-            sinon.assert.calledThrice(fs.existsSync);
-            assert(fs.existsSync.firstCall.returned(false));
-            assert(fs.existsSync.secondCall.returned(false));
-            assert(fs.existsSync.thirdCall.returned(true));
-          });
-      });
-
-      it('regolds if files are beyond the refresh rate', () => {
-        return golder.gold()
-          .then(() => {
-            fs.utimesSync(homepagePath, 1, 1);
-            return golder.gold();
-          })
-          .then(() => {
-            sinon.assert.calledTwice(request.get);
-          });
-      });
-
-      it('does not regold if the files are fresh enough', () => {
-        return golder.gold()
-          .then(() => {
-            // This is less than the 'weekly' refresh rate
-            const old = (new Date()) - 604400000;
-            fs.utimesSync(homepagePath, old, old);
-            return golder.gold();
-          })
-          .then(() => {
-            sinon.assert.calledOnce(request.get);
-          });
-      });
-
-      it('warns when a regold is necessary but there is a network issue', () => {
-        return golder.gold()
-          .then(() => {
-            fs.utimesSync(homepagePath, 1, 1);
-            request.get.callsFake(() => Promise.resolve({ statusCode: 500 }));
-            fs.writeFileSync.reset();
-            return golder.gold();
-          })
-          .then(() => {
-            sinon.assert.notCalled(fs.writeFileSync);
-            // ensure that the file body was not changed
-            assert.equal(fs.readFileSync(homepagePath), expectedResponseString);
-          });
-      });
-
-      it('throws when cannot gold fist time', () => {
-        request.get.resolves({ statusCode: 500 });
-        return golder.gold()
-          .then(() => assert.fail('golding should have failed'))
-          .catch(err => assert(err.message.includes('cannot gold')));
-      });
-    });
   });
 
-  describe('server', () => {
-    it('makes a request mock server', () => {
-      return golder.gold()
-        .then(() => {
-          // restore this request to be able to test the mocking
-          request.get.restore();
-          golder.mockRequest(sandbox, request);
+  describe('server', function () {
+    beforeEach(() => {
+      return golder.mockRequest(sandbox, axios);
+    });
 
-          // requesting the url should return the contents of the golded response
-          const ret = request.get(golder.routes.homepage.url);
-          assert(ret.then);
-          return ret;
-        })
+    it('makes a request mock server', function () {
+      return axios.get(homepageUrl)
         .then((response) => {
-          sinon.assert.calledOnce(fs.readFileSync);
-          assert.equal(response, expectedResponse.body, 'unexpected response body recorded');
+          sinon.assert.calledOnce(golder.writeGold);
+          assert.equal(response, mockResponse, 'unexpected response body recorded');
+          // get the same route again an ensure that the gold is used
+          golder.writeGold.reset();
+          return axios.get(homepageUrl);
+        })
+        .then(() => {
+          sinon.assert.notCalled(golder.writeGold);
         });
     });
 
-    it('mocks simple request object params', () => {
-      return golder.gold()
+    it('regolds when necessary', function () {
+      const {filePath} = golder.urlToRoute[homepageUrl];
+      return axios.get(homepageUrl)
         .then(() => {
-          // restore this request to be able to test the mocking
-          request.get.restore();
-          golder.mockRequest(sandbox, request);
-
-          return request.get({ uri: golder.routes.homepage.url });
+          sinon.assert.calledOnce(golder.writeGold);
+          fs.utimesSync(filePath, 1, 1);
+          return axios.get(homepageUrl);
         })
-        .then((response) => {
-          sinon.assert.calledOnce(fs.readFileSync);
-          assert.equal(response, expectedResponse.body, 'unexpected response body recorded');
+        .then(() => {
+          sinon.assert.calledTwice(golder.writeGold);
         });
     });
 
-    it('mocks full request object params', () => {
-      return golder.gold()
+    it('does not gold when gold is fresh enough', function () {
+      const {filePath} = golder.urlToRoute[homepageUrl];
+      return axios.get(homepageUrl)
         .then(() => {
-          // restore this request to be able to test the mocking
-          request.get.restore();
-          golder.mockRequest(sandbox, request);
-
-          return request.get({
-            uri: golder.routes.homepage.url,
-            resolveWithFullResponse: true,
-          });
+          const freshEnough = (new Date()) - 604400000;
+          fs.utimesSync(filePath, freshEnough, freshEnough);
+          return axios.get(homepageUrl);
         })
-        .then((response) => {
-          sinon.assert.calledOnce(fs.readFileSync);
-          assert.deepEqual(response, expectedResponse, 'unexpected response recorded');
+        .then(() => {
+          sinon.assert.calledOnce(golder.readGold);
+          sinon.assert.calledOnce(golder.writeGold);
+        });
+    });
+
+    it('does not gold when upstream status changes', function () {
+      return axios.get(homepageUrl)
+        .then(() => {
+          golder.axios.get.resolves({status: 500});
+          return axios.get(homepageUrl);
+        })
+        .then(() => {
+          sinon.assert.calledOnce(golder.writeGold);
         });
     });
   });
