@@ -80,14 +80,25 @@ class Golder {
 
   mockRequest(sandbox, req) {
     const fn = (pathOrOpts) => {
-      const reqOpts = {method: 'get', url: pathOrOpts};
+      assert(pathOrOpts);
+      const reqOpts = {url: pathOrOpts};
 
       if (_.isPlainObject(pathOrOpts)) {
         Object.assign(reqOpts, pathOrOpts, {url: pathOrOpts.url});
       }
 
+      // if the route is not handled by the golder, just make a request
+      if (!this.urlToRoute[reqOpts.url]) {
+        return this.axios(reqOpts);
+      }
+
       const {filePath, opts} = this.urlToRoute[reqOpts.url];
       const goldExists = fs.existsSync(filePath);
+      let gold;
+      if (goldExists) {
+        gold = JSON.parse(this.readGold(filePath));
+      }
+
       let useGold = goldExists;
       if (goldExists && opts.refresh) {
         const {mtime} = fs.lstatSync(filePath);
@@ -95,11 +106,10 @@ class Golder {
         useGold = age < differences[opts.refresh];
       }
       if (useGold) {
-        const response = JSON.parse(this.readGold(filePath));
-        return Promise.resolve(response);
+        return Promise.resolve(gold);
       }
 
-      return this.axios(opts)
+      return this.axios.get(opts)
         .then((response) => {
           const {status} = response;
           delete response.request;
@@ -107,12 +117,10 @@ class Golder {
           // if the response code is not OK and the current file exists, warn that the re-golding
           // cannot be completed
           if (status >= 400 && goldExists) {
-            const current = this.readGold(filePath);
-
-            if (current.status !== status) {
+            if (gold.status !== status) {
               const msg = `re-golding ${reqOpts.url} returned code ${status}; using expired response`;
               console.warn('WARN:', msg); // eslint-disable-line no-console
-              return Promise.resolve();
+              return Promise.resolve(gold);
             }
           } else if (status >= 400) {
             throw new Error(`GET ${reqOpts.url} returned code ${status}; cannot gold`);
@@ -121,14 +129,15 @@ class Golder {
           // QUESTION(artem): is there a need to gold 4XX responses?
           const body = JSON.stringify(response, null, 2);
           this.writeGold(filePath, body);
-          return Promise.resolve();
+          return Promise.resolve(response);
         });
     };
 
     if (_.isFunction(req.get.restore)) {
-      req.get.restore();
+      req.get.callsFake(fn);
+    } else {
+      sandbox.stub(req, 'get').callsFake(fn);
     }
-    sandbox.stub(req, 'get').callsFake(fn);
   }
 }
 

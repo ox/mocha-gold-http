@@ -8,14 +8,12 @@ const Golder = require('../src/golder');
 
 describe('Golder', function () {
   const sandbox = sinon.createSandbox(sinon.defaultConfig);
-  const expectedResponse = {
+  const homepageUrl = 'http://duckduckgo.com/robots.txt';
+  const mockResponse = {
     status: 200,
     data: 'test-body',
     headers: {},
-    request: {},
   };
-  const expectedResponseString = JSON.stringify(expectedResponse, null, 2);
-  const homepageUrl = 'http://duckduckgo.com/robots.txt';
   const opts = {
     name: 'homepage tests',
     routes: {
@@ -29,8 +27,9 @@ describe('Golder', function () {
 
   beforeEach(() => {
     fakeFs.init(sandbox, fs);
-    sandbox.stub(axios, 'get').resolves(expectedResponse);
     golder = new Golder(opts);
+    // stub the lib's axios instant to make sure it never actually makes requests
+    sandbox.stub(golder.axios, 'get').resolves(mockResponse);
     sandbox.spy(golder, 'readGold');
     sandbox.spy(golder, 'writeGold');
   });
@@ -80,39 +79,33 @@ describe('Golder', function () {
     });
 
     it('makes a request mock server', function () {
-      this.timeout(20000);
       return axios.get(homepageUrl)
         .then((response) => {
-          sinon.assert.calledOnce(fs.existsSync);
-          sinon.assert.calledOnce(fs.writeFileSync);
-          assert.equal(response, expectedResponse.body, 'unexpected response body recorded');
-
-          fs.writeFileSync.reset();
+          sinon.assert.calledOnce(golder.writeGold);
+          assert.equal(response, mockResponse, 'unexpected response body recorded');
           // get the same route again an ensure that the gold is used
+          golder.writeGold.reset();
           return axios.get(homepageUrl);
         })
         .then(() => {
-          sinon.assert.notCalled(fs.writeFileSync);
-          sinon.assert.calledOnce(fs.readFileSync);
+          sinon.assert.notCalled(golder.writeGold);
         });
     });
 
     it('regolds when necessary', function () {
-      this.timeout(20000);
       const {filePath} = golder.urlToRoute[homepageUrl];
       return axios.get(homepageUrl)
         .then(() => {
+          sinon.assert.calledOnce(golder.writeGold);
           fs.utimesSync(filePath, 1, 1);
           return axios.get(homepageUrl);
         })
         .then(() => {
-          sinon.assert.calledTwice(fs.writeFileSync);
-          sinon.assert.notCalled(fs.readFileSync);
+          sinon.assert.calledTwice(golder.writeGold);
         });
     });
 
     it('does not gold when gold is fresh enough', function () {
-      this.timeout(20000);
       const {filePath} = golder.urlToRoute[homepageUrl];
       return axios.get(homepageUrl)
         .then(() => {
@@ -121,21 +114,19 @@ describe('Golder', function () {
           return axios.get(homepageUrl);
         })
         .then(() => {
-          sinon.assert.calledOnce(fs.writeFileSync);
-          sinon.assert.calledOnce(fs.readFileSync);
+          sinon.assert.calledOnce(golder.readGold);
+          sinon.assert.calledOnce(golder.writeGold);
         });
     });
 
     it('does not gold when upstream status changes', function () {
-      this.timeout(20000);
       return axios.get(homepageUrl)
         .then(() => {
-          sandbox.stub(golder.axios, 'get').resolves({status: 500});
+          golder.axios.get.resolves({status: 500});
           return axios.get(homepageUrl);
         })
         .then(() => {
           sinon.assert.calledOnce(golder.writeGold);
-          sinon.assert.calledOnce(golder.readGold);
         });
     });
   });
