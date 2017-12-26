@@ -28,9 +28,6 @@ const axios = require('axios');
 const sandbox = sinon.createSandbox(sinon.defaultConfig);
 
 describe('some test', function () {
-  // NOTE: require to make sure Linux has enough time to flush to disk
-  this.timeout(30000);
-
   const opts = {
     name: 'some test',
     routes: {
@@ -42,23 +39,19 @@ describe('some test', function () {
   };
   const golder = new Golder(opts);
 
-  beforeEach(() => {
-    return golder.mockRequest(sandbox, axios);
-  });
-
-  afterEach(() => {
-    sandbox.restore();
-  });
+  // NOTE: require to make sure Linux has enough time to flush to disk
+  this.timeout(30000);
+  beforeEach(() => golder.mockRequest(sandbox, axios));
+  afterEach(() => sandbox.restore());
 
   it('can fetch remote pages', function () {
     return axios.get(opts.routes.homepage.url)
-    .then((response) => {
+      .then((response) => {
         // test the response as if you made a network call
-	      assert.equal(response.status, 200);
+	      assert.equal(response.statusCode, 200);
       });
   });
 });
-
 ```
 
 ## Roadmap and Development
